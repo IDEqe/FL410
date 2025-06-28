@@ -14,17 +14,15 @@ def get_controls(stall_active, pitch, roll, heading):
                 roll -= 1
             elif key == 'd':
                 roll += 1
-            elif key == 'q':  # let's say 'q' turns heading left
+            elif key == 'q':
                 heading -= 1
-            elif key == 'e':  # and 'e' turns heading right
+            elif key == 'e':
                 heading += 1
             elif key == 'x':
                 exit_requested = True
 
-        # Optionally clamp pitch, roll, heading to reasonable ranges:
         pitch = max(-90, min(90, pitch))
-        # Normalize roll to [-180, 180] like a compass
         roll = ((roll + 180) % 360) - 180
-        heading %= 360  # keep heading between 0-359
+        heading %= 360
 
     return pitch, roll, heading, exit_requested

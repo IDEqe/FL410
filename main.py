@@ -4,12 +4,21 @@ from warnings import get_warnings, add_crash_warning
 from controls import get_controls
 from heading import update_heading
 from crash import check_crash
+from vsp import VerticalSpeedIndicator
 
 airspeed = 250
-altitude = 3000
+altitude = 500
 pitch = 0
 roll = 0
-heading = 0  # new variable for heading in degrees 0-359
+heading = 0
+
+# New helper for nonlinear pitch-to-vertical-speed mapping
+def pitch_to_vspeed(pitch):
+    sign = 1 if pitch >= 0 else -1
+    abs_pitch = abs(int(round(pitch)))
+    if abs_pitch == 0:
+        return 0
+    return sign * (10 + (abs_pitch - 1) * 5)
 
 stall_start_time = None
 stall_stage = 0
@@ -18,14 +27,19 @@ stall_active = False
 last_time = time.time()
 
 crashed = False
-crash_fill_progress = 0  # Number of Xs to fill in the PFD
+crash_fill_progress = 0
 
 while True:
-    # clear_screen() is now called inside print_status for smoother display
+    import msvcrt
+    exit_requested = False
+    if msvcrt.kbhit():
+        key = msvcrt.getch().decode('utf-8').lower()
+        if key == 'x':
+            break
 
     if not crashed:
         warnings, pitch, stall_start_time, stall_stage, stall_active = get_warnings(
-            pitch, roll, stall_start_time, stall_stage, stall_active, crashed  # pass crashed here
+            pitch, roll, stall_start_time, stall_stage, stall_active, crashed
         )
 
         pitch, roll, heading, exit_requested = get_controls(stall_active, pitch, roll, heading)
@@ -36,29 +50,23 @@ while True:
         dt = current_time - last_time
         last_time = current_time
 
-        altitude += pitch * 10 * dt  # altitude changes 10 ft/sec per pitch degree
+        altitude += pitch_to_vspeed(pitch) * dt
         if altitude < 0:
             altitude = 0
 
-        heading = update_heading(roll, heading, dt)  # update heading based on roll and elapsed time
-
+        heading = update_heading(roll, heading, dt)
     else:
-        # Only allow exit (X) when crashed, freeze all other controls and heading
-        import msvcrt
-        exit_requested = False
-        if msvcrt.kbhit():
-            key = msvcrt.getch().decode('utf-8').lower()
-            if key == 'x':
-                break
         time.sleep(0.02)
 
-    # Crash detection and animation
     crashed, altitude, crash_fill_progress, crash_warning = check_crash(
         altitude, crashed, crash_fill_progress
     )
     if crashed:
         airspeed = 0
         warnings = add_crash_warning(warnings, crashed)
+
+    vsi = VerticalSpeedIndicator(pitch)
+    vsi_str = vsi.render()
 
     print_status(
         airspeed,
@@ -67,11 +75,10 @@ while True:
         roll,
         heading,
         warnings if not crashed else warnings,
-        crashed=crashed,
-        crash_fill_progress=crash_fill_progress if crashed else None
+        crashed,
+        crash_fill_progress if crashed else None,
+        vsi_str
     )
 
-    if not crashed:
-        time.sleep(0.08)  # Increase sleep to reduce flicker (about 12 FPS)
-        time.sleep(0.08)  # Increase sleep to reduce flicker (about 12 FPS)
-        time.sleep(0.08)  # Increase sleep to reduce flicker (about 12 FPS)
+    # Refresh at 1 FPS (1.0s per frame)
+    time.sleep(1.0)
